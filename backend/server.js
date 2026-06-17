@@ -9,6 +9,7 @@ const classroomRoutes = require('./routes/classroomRoutes');
 const achievementRoutes = require('./routes/achievementRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const bookmarkRoutes = require('./routes/bookmarkRoutes');
+const subjectRoutes = require('./routes/subjectRoutes');
 const topicRoutes = require('./routes/topicRoutes');
 require('dotenv').config();
 
@@ -40,6 +41,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/subjects', require('./routes/subjects'));
 app.use('/api/cbt', cbtRoutes);
 app.use('/api/topics', topicRoutes);
+app.use('/api/subjects', subjectRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/performance', performanceRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);

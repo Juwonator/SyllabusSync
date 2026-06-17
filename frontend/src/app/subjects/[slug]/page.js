@@ -1,148 +1,141 @@
 'use client';
+
 import { useEffect, useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import axios from 'axios';
-import Navbar from '@/components/Navbar';
-import { SubjectPageSkeleton } from '@/components/SkeletonLoader';
-import { FaArrowLeft, FaFire, 
-         FaExclamationTriangle, FaChevronRight } from 'react-icons/fa';
+import BottomNav from '@/components/BottomNav';
 
 export default function SubjectPage() {
+  const params = useParams();
   const router = useRouter();
-  const pathname = usePathname();
-  const [user, setUser] = useState(null);
+  const slug = params.slug;
   const [subject, setSubject] = useState(null);
   const [topics, setTopics] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [slug, setSlug] = useState('');
+  const [examFilter, setExamFilter] = useState('ALL');
 
   useEffect(() => {
-    // Get slug from URL path
-    const pathParts = pathname.split('/');
-    const currentSlug = pathParts[pathParts.length - 1];
-    setSlug(currentSlug);
-
-    // Check login
-    const userData = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-    if (!userData || !token) {
-      router.push('/login');
-      return;
-    }
-    setUser(JSON.parse(userData));
-
-    // Fetch data
-    const fetchData = async () => {
+    const fetchTopics = async () => {
       try {
+        const token = localStorage.getItem('token');
         const res = await axios.get(
-          `http://localhost:5000/api/subjects/${currentSlug}/topics`
+          `http://localhost:5000/api/classroom/subjects/${slug}/topics`,
+          { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSubject(res.data.subject);
+        setSubject({ name: res.data.subjectName, id: res.data.subjectId });
         setTopics(res.data.topics);
       } catch (err) {
-        setError('Could not load subject. Please try again.');
+        console.error(err);
       } finally {
         setLoading(false);
       }
     };
+    fetchTopics();
+  }, [slug]);
 
-    if (currentSlug) fetchData();
-  }, [pathname]);
-
-  const handleTopicClick = (topicSlug) => {
-    router.push(`/subjects/${slug}/topics/${topicSlug}`);
+  // Determine topic status based on completed subtopics
+  const getTopicStatus = (topic) => {
+    if (topic.completedSubtopicCount === 0) return 'not_started';
+    if (topic.completedSubtopicCount === topic.subtopicCount) return 'completed';
+    return 'in_progress';
   };
 
-  if (loading) return <SubjectPageSkeleton />;
+  // Filter topics by exam body – this requires that each topic has an `exam_body` field or we need a relation.
+  // For now, we assume all topics belong to the subject; filtering by exam body will be done later.
+  // We'll keep the filter tabs but they won't filter yet until we add exam_body to topics.
+  const filteredTopics = topics.filter(topic => {
+    if (examFilter === 'ALL') return true;
+    // TODO: filter by topic.exam_body if that column exists
+    return true;
+  });
 
-  if (error) return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-      <div className="bg-white rounded-xl p-8 text-center shadow">
-        <FaExclamationTriangle className="text-red-500 text-4xl mx-auto mb-4" />
-        <p className="text-gray-700 font-medium">{error}</p>
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="mt-4 bg-green-700 text-white px-6 py-2 
-          rounded-lg hover:bg-green-600 transition">
-          Back to Dashboard
-        </button>
-      </div>
-    </div>
-  );
+  const totalTopics = topics.length;
+  const completedTopics = topics.filter(t => getTopicStatus(t) === 'completed').length;
+  const completedPercent = totalTopics > 0 ? Math.round((completedTopics / totalTopics) * 100) : 0;
+
+  if (loading) {
+    return <div className="min-h-screen bg-gray-100 flex items-center justify-center">Loading subject...</div>;
+  }
 
   return (
-    <main className="min-h-screen bg-gray-100">
-
-      <Navbar user={user} />
-
-      {/* Subject Header */}
-      <section className="bg-green-700 px-8 py-10 text-white">
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="flex items-center gap-2 text-green-200 
-          hover:text-white transition mb-4 text-sm">
-          <FaArrowLeft /> Back to Dashboard
-        </button>
-        <h1 className="text-4xl font-bold">{subject?.name}</h1>
-        <div className="flex items-center gap-4 mt-3">
-          <span className="bg-yellow-400 text-green-900 text-sm 
-          font-bold px-3 py-1 rounded-full">
-            {subject?.exam_body}
-          </span>
-          <span className="text-green-200 text-sm">
-            {topics.length} Topics
-          </span>
-        </div>
-      </section>
-
-      {/* Study Tip */}
-      <div className="bg-yellow-50 border-l-4 border-yellow-400 
-      px-8 py-4 flex items-start gap-3">
-        <FaFire className="text-yellow-500 text-xl mt-1 shrink-0" />
-        <p className="text-yellow-800 text-sm">
-          <span className="font-bold">Study Tip:</span> Work through 
-          topics in order from top to bottom for best results.
-        </p>
+    <div className="min-h-screen bg-gray-100 pb-20">
+      {/* Header */}
+      <div className="bg-gradient-to-br from-green-800 to-green-700 pt-6 pb-4 px-4">
+        <button onClick={() => router.back()} className="text-white text-2xl mb-2">←</button>
+        <h1 className="text-white text-2xl font-bold">{subject?.name}</h1>
       </div>
 
-      {/* Topics List */}
-      <section className="px-8 py-8 max-w-4xl mx-auto">
-        <h2 className="text-lg font-bold text-gray-700 mb-4">
-          All Topics
-        </h2>
-        <div className="flex flex-col gap-3">
-          {topics.map((topic, index) => (
-            <div
-              key={topic.id}
-              onClick={() => handleTopicClick(topic.slug)}
-              className="bg-white rounded-xl px-6 py-5 shadow 
-              hover:shadow-md transition cursor-pointer 
-              flex items-center justify-between
-              hover:border-l-4 hover:border-green-600 group">
-              <div className="flex items-center gap-4">
-                <div className="w-9 h-9 rounded-full bg-green-100 
-                text-green-700 font-bold text-sm flex items-center 
-                justify-center shrink-0">
-                  {index + 1}
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-800 
-                  group-hover:text-green-700 transition">
-                    {topic.name}
-                  </h3>
-                  <p className="text-gray-400 text-xs mt-1">
-                    {topic.exam_body} Curriculum
-                  </p>
-                </div>
-              </div>
-              <FaChevronRight className="text-gray-300 
-              group-hover:text-green-600 transition" />
-            </div>
+      <div className="px-4 py-4">
+        {/* Filter Tabs (horizontal scroll) */}
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+          {['ALL', 'WAEC', 'NECO', 'JAMB/UTME', 'GCE', 'JUPEB'].map(filter => (
+            <button
+              key={filter}
+              onClick={() => setExamFilter(filter)}
+              className={`px-3 py-1 rounded-full text-sm font-medium whitespace-nowrap transition ${
+                examFilter === filter
+                  ? 'bg-green-700 text-white'
+                  : 'bg-white text-gray-700 border border-gray-200'
+              }`}
+            >
+              {filter}
+            </button>
           ))}
         </div>
-      </section>
 
-    </main>
+        {/* Progress Summary Card */}
+        <div className="bg-white rounded-xl p-4 mb-4 shadow-sm">
+          <div className="text-sm text-gray-600">Your Progress</div>
+          <div className="text-xl font-bold">{completedTopics} of {totalTopics} topics done</div>
+          <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full bg-green-500 rounded-full" style={{ width: `${completedPercent}%` }} />
+          </div>
+        </div>
+
+        {/* Topic List */}
+        <div className="space-y-3">
+          {filteredTopics.map(topic => {
+            const status = getTopicStatus(topic);
+            const isInProgress = status === 'in_progress';
+            const isCompleted = status === 'completed';
+            const progressPercent = isInProgress ? Math.round((topic.completedSubtopicCount / topic.subtopicCount) * 100) : 0;
+
+            return (
+              <button
+                key={topic.id}
+                onClick={() => router.push(`/topics/${topic.slug}`)}
+                className="w-full bg-white rounded-xl p-4 shadow-sm text-left border hover:shadow-md transition"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="text-2xl">
+                    {isCompleted && '✅'}
+                    {isInProgress && '🔄'}
+                    {status === 'not_started' && '○'}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-800">{topic.name}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {isCompleted && `${topic.subtopicCount} subtopics · Done`}
+                      {isInProgress && `${topic.subtopicCount} subtopics · ${topic.completedSubtopicCount} done`}
+                      {status === 'not_started' && `${topic.subtopicCount} subtopics`}
+                    </div>
+                    {isInProgress && (
+                      <div className="mt-2 h-1.5 bg-gray-200 rounded-full w-full">
+                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${progressPercent}%` }} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+          {filteredTopics.length === 0 && (
+            <div className="text-center text-gray-500 py-8">No topics found for this filter.</div>
+          )}
+        </div>
+      </div>
+
+      <BottomNav />
+    </div>
   );
 }

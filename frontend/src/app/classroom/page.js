@@ -8,135 +8,121 @@ import BottomNav from '@/components/BottomNav';
 export default function ClassroomPage() {
   const router = useRouter();
   const [subjects, setSubjects] = useState([]);
-  const [selectedSubject, setSelectedSubject] = useState(null);
-  const [topics, setTopics] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
-  const [exam, setExam] = useState('WAEC'); // could come from user profile
+  const [progress, setProgress] = useState({}); // { subjectId: { completedTopics, totalTopics, lastTopic } }
 
   useEffect(() => {
-    const fetchSubjects = async () => {
+    const fetchData = async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await axios.get(`http://localhost:5000/api/classroom/subjects?exam=${exam}`, {
+        // Fetch all subjects
+        const subjectsRes = await axios.get('http://localhost:5000/api/classroom/subjects', {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setSubjects(res.data.subjects);
-        if (res.data.subjects.length > 0 && !selectedSubject) {
-          setSelectedSubject(res.data.subjects[0]);
+        setSubjects(subjectsRes.data.subjects);
+
+        // Fetch user progress summary (if endpoint exists)
+        try {
+          const progressRes = await axios.get('http://localhost:5000/api/classroom/user/progress-summary', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setProgress(progressRes.data);
+        } catch (err) {
+          console.warn('Progress summary not available yet');
         }
       } catch (err) {
-        console.error('Failed to load subjects', err);
+        console.error(err);
       } finally {
         setLoading(false);
       }
     };
-    fetchSubjects();
-  }, [exam]);
+    fetchData();
+  }, []);
 
-  useEffect(() => {
-    if (!selectedSubject) return;
-    const fetchTopics = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const res = await axios.get(`http://localhost:5000/api/classroom/topics/${selectedSubject.id}?exam=${exam}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setTopics(res.data.topics);
-      } catch (err) {
-        console.error('Failed to load topics', err);
-        setTopics([]);
-      }
-    };
-    fetchTopics();
-  }, [selectedSubject, exam]);
+  const filteredSubjects = subjects.filter(subj =>
+    subj.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-  const startPracticeForTopic = (topicId, topicName) => {
-    // Navigate to exam setup with pre-selected topic
-    router.push(`/exam-setup?topicId=${topicId}&topicName=${encodeURIComponent(topicName)}`);
-  };
+  const hasProgress = Object.keys(progress).length > 0;
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-green-700 text-xl animate-pulse">Loading classroom...</div>
-      </div>
-    );
+    return <div className="min-h-screen bg-gray-100 flex items-center justify-center">Loading classroom...</div>;
   }
 
   return (
     <div className="min-h-screen bg-gray-100 pb-20">
       {/* Header */}
       <div className="bg-gradient-to-br from-green-800 to-green-700 pt-6 pb-4 px-4">
-        <button onClick={() => router.back()} className="text-white text-2xl mb-2">←</button>
-        <h1 className="text-white text-2xl font-bold">Classroom</h1>
-        <p className="text-white/70 text-sm">Browse subjects and start topic‑wise practice</p>
-      </div>
-
-      {/* Exam selector (simplified – you can expand) */}
-      <div className="px-4 py-3 bg-white border-b border-gray-200 flex gap-2">
-        {['WAEC', 'JAMB', 'NECO'].map(e => (
-          <button
-            key={e}
-            onClick={() => setExam(e)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium ${exam === e ? 'bg-green-700 text-white' : 'bg-gray-100 text-gray-700'}`}
-          >
-            {e}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex flex-col md:flex-row">
-        {/* Subject sidebar */}
-        <div className="w-full md:w-1/3 bg-white border-r border-gray-200">
-          <div className="p-3 font-semibold text-gray-700 border-b">Subjects</div>
-          <div className="max-h-[60vh] overflow-y-auto">
-            {subjects.map(subj => (
-              <button
-                key={subj.id}
-                onClick={() => setSelectedSubject(subj)}
-                className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-green-50 transition ${selectedSubject?.id === subj.id ? 'bg-green-50 border-l-4 border-green-600' : ''}`}
-              >
-                <span className="text-xl">{subj.icon || '📚'}</span>
-                <div>
-                  <div className="font-medium text-gray-800">{subj.name}</div>
-                  <div className="text-xs text-gray-500">Click to see topics</div>
-                </div>
-              </button>
-            ))}
-            {subjects.length === 0 && <div className="p-4 text-gray-500 text-sm">No subjects found for {exam}.</div>}
+        <div className="flex justify-between items-center">
+          <div className="text-white text-2xl font-bold">Classroom</div>
+          <div className="flex gap-3">
+            <button className="text-white">🔍</button>
+            <button onClick={() => router.push('/dashboard')} className="text-white">🏠</button>
           </div>
         </div>
+        <input
+          type="text"
+          placeholder="Search subjects..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full mt-4 p-2 rounded-lg border border-gray-300 focus:border-green-500 focus:outline-none"
+        />
+      </div>
 
-        {/* Topics list */}
-        <div className="flex-1 p-4">
-          <h2 className="text-lg font-bold text-gray-800 mb-3">
-            {selectedSubject?.name || 'Select a subject'} — Topics
-          </h2>
-          {topics.length === 0 ? (
-            <div className="text-gray-500 text-center py-10">
-              No topics available for this subject. Check back later.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {topics.map(topic => (
-                <div key={topic.id} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-semibold text-gray-800">{topic.name}</h3>
-                      <p className="text-xs text-gray-500 mt-1">{topic.description || `${topic.question_count || 0} questions available`}</p>
+      <div className="px-4 py-4">
+        {/* Continue Studying section */}
+        {hasProgress && (
+          <>
+            <h2 className="text-lg font-bold text-gray-800 mb-2">Continue Studying</h2>
+            <div className="space-y-3 mb-6">
+              {Object.entries(progress).map(([subjectId, data]) => {
+                const subject = subjects.find(s => s.id === parseInt(subjectId));
+                if (!subject) return null;
+                return (
+                  <div key={subjectId} className="bg-white rounded-xl p-4 shadow-sm border">
+                    <div className="flex justify-between">
+                      <div>
+                        <div className="text-xl font-bold">{subject.name}</div>
+                        <div className="text-sm text-gray-500">Last studied: {data.lastTopic || '—'}</div>
+                        <div className="text-xs text-gray-400 mt-1">{data.completedTopics} of {data.totalTopics} topics done</div>
+                      </div>
+                      <button
+                        onClick={() => router.push(`/subject/${subject.slug}`)}
+                        className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm"
+                      >
+                        Continue →
+                      </button>
                     </div>
-                    <button
-                      onClick={() => startPracticeForTopic(topic.id, topic.name)}
-                      className="bg-green-100 text-green-700 text-xs font-semibold px-3 py-1.5 rounded-full hover:bg-green-200 transition"
-                    >
-                      Practice
-                    </button>
+                    <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-green-500 rounded-full" style={{ width: `${(data.completedTopics / data.totalTopics) * 100}%` }} />
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          )}
-        </div>
+          </>
+        )}
+
+        {/* All Subjects */}
+        <h2 className="text-lg font-bold text-gray-800 mb-2">All Subjects</h2>
+        {filteredSubjects.length === 0 ? (
+          <div className="text-center text-gray-500 py-8">No subjects match "{searchTerm}"</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {filteredSubjects.map(subj => (
+              <button
+                key={subj.id}
+                onClick={() => router.push(`/subject/${subj.slug}`)}
+                className="bg-white rounded-xl p-4 shadow-sm text-center hover:shadow-md transition"
+              >
+                <div className="text-4xl mb-2">📘</div>
+                <div className="font-semibold text-gray-800">{subj.name}</div>
+                <div className="text-xs text-gray-500 mt-1">Topics: {subj.topicCount || 0}</div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <BottomNav />

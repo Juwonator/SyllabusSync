@@ -3,23 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const auth = require('../middleware/auth');
 
-// GET /api/subjects - List all subjects (for dropdowns, search, classroom grid)
-router.get('/', auth, async (req, res) => {
-  try {
-    const result = await db.query(
-      `SELECT id, name, slug, icon_emoji 
-       FROM subjects 
-       WHERE is_active = true 
-       ORDER BY name`
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch subjects' });
-  }
-});
-
-// GET /api/subjects/:slug - Detailed subject with topics, progress, exams
+// Get subject details + all topics with user progress
 router.get('/:slug', auth, async (req, res) => {
   const { slug } = req.params;
   const userId = req.user.id;
@@ -43,12 +27,7 @@ router.get('/:slug', auth, async (req, res) => {
          t.id, t.name, t.slug, t.description, t.display_order,
          COUNT(DISTINCT sub.id) AS total_subtopics,
          COALESCE(up.completed, false) AS completed,
-         up.last_studied_at,
-         CASE 
-           WHEN up.completed = true THEN 'completed'
-           WHEN up.last_studied_at IS NOT NULL THEN 'in_progress'
-           ELSE 'not_started'
-         END AS status
+         up.last_studied_at
        FROM topics t
        LEFT JOIN subtopics sub ON sub.topic_id = t.id
        LEFT JOIN user_progress up ON up.user_id = $1 AND up.topic_id = t.id
@@ -58,24 +37,20 @@ router.get('/:slug', auth, async (req, res) => {
       [userId, subject.id]
     );
 
+    // 3. Calculate progress summary
     const topics = topicsRes.rows.map(t => ({
-      id: t.id,
-      name: t.name,
-      slug: t.slug,
-      description: t.description,
-      total_subtopics: parseInt(t.total_subtopics) || 0,
+      ...t,
+      total_subtopics: parseInt(t.total_subtopics),
       completed: t.completed || false,
-      last_studied_at: t.last_studied_at,
-      status: t.status
+      status: t.completed ? 'completed' : (t.last_studied_at ? 'in_progress' : 'not_started')
     }));
 
-    // 3. Calculate summary
     const totalTopics = topics.length;
-    const completedTopics = topics.filter(t => t.status === 'completed').length;
+    const completedTopics = topics.filter(t => t.completed).length;
     const inProgressTopics = topics.filter(t => t.status === 'in_progress').length;
     const progressPercent = totalTopics === 0 ? 0 : Math.round((completedTopics / totalTopics) * 100);
 
-    // 4. Get available exams for this subject (exams that have questions for this subject)
+    // 4. Optional: Get list of exam bodies that have questions for this subject
     const examsRes = await db.query(
       `SELECT DISTINCT e.id, e.name, e.code
        FROM exams e
@@ -102,7 +77,7 @@ router.get('/:slug', auth, async (req, res) => {
   }
 });
 
-// POST /api/subjects/topic-progress - Update user progress on a topic
+// Update topic progress (mark as completed / update last studied)
 router.post('/topic-progress', auth, async (req, res) => {
   const { topicId, completed } = req.body;
   const userId = req.user.id;
@@ -120,7 +95,7 @@ router.post('/topic-progress', auth, async (req, res) => {
          completed = EXCLUDED.completed,
          last_studied_at = NOW()
        WHERE user_progress.user_id = $1 AND user_progress.topic_id = $2`,
-      [userId, topicId, completed !== undefined ? completed : true]
+      [userId, topicId, completed]
     );
     res.json({ success: true });
   } catch (err) {
